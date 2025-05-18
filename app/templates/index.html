@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Чат с GPT</title>
+    <style>
+        body { font-family: sans-serif; margin: 40px; }
+        #chat { max-width: 600px; margin: auto; }
+        .msg { margin: 5px 0; padding: 8px; border-radius: 6px; }
+        .user { background: #def; text-align: right; }
+        .bot { background: #eee; text-align: left; }
+    </style>
+</head>
+<body>
+    <div id="chat"></div>
+    <input id="input" type="text" placeholder="Введите сообщение..." style="width: 100%; padding: 10px;" />
+
+    <script>
+        const socket = new WebSocket("ws://" + location.host + "/ws/chat");
+        const input = document.getElementById("input");
+        const chat = document.getElementById("chat");
+
+        function appendMessage(text, cls) {
+            const div = document.createElement("div");
+            div.className = "msg " + cls;
+            div.textContent = text;
+            chat.appendChild(div);
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        socket.onmessage = event => {
+            appendMessage("🤖 " + event.data, "bot");
+        };
+
+        input.addEventListener("keydown", event => {
+            if (event.key === "Enter" && input.value.trim()) {
+                const message = input.value.trim();
+                appendMessage("🧑 " + message, "user");
+                socket.send(message);
+                input.value = "";
+            }
+        });
+    </script>
+</body>
+</html>
