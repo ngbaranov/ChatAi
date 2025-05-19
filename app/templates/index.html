@@ -15,6 +15,14 @@
     <div id="chat"></div>
     <input id="input" type="text" placeholder="Введите сообщение..." style="width: 100%; padding: 10px;" />
 
+    <div style="max-width: 600px; margin: auto;">
+    <label>System Prompt: <input type="text" id="prompt" value="Ты дружелюбный помощник." style="width:100%"></label><br>
+    <label>Model: <input type="text" id="model" value="deepseek-chat" style="width:100%"></label><br>
+    <label>Temperature: <input type="number" id="temperature" step="0.1" value="0.2" min="0" max="2"></label><br>
+    <label>Frequency Penalty: <input type="number" id="freq_penalty" step="0.1" value="0.1" min="0" max="2"></label><br>
+    <label>Presence Penalty: <input type="number" id="pres_penalty" step="0.1" value="0.2" min="0" max="2"></label><br>
+    </div>
+
     <script>
         const socket = new WebSocket("ws://" + location.host + "/ws/chat");
         const input = document.getElementById("input");
@@ -32,14 +40,24 @@
             appendMessage("🤖 " + event.data, "bot");
         };
 
-        input.addEventListener("keydown", event => {
-            if (event.key === "Enter" && input.value.trim()) {
-                const message = input.value.trim();
-                appendMessage("🧑 " + message, "user");
-                socket.send(message);
-                input.value = "";
-            }
-        });
+input.addEventListener("keydown", event => {
+    if (event.key === "Enter" && input.value.trim()) {
+        const message = input.value.trim();
+        appendMessage("🧑 " + message, "user");
+
+        const payload = {
+            message: message,
+            prompt: document.getElementById("prompt").value,
+            model: document.getElementById("model").value,
+            temperature: parseFloat(document.getElementById("temperature").value),
+            frequency_penalty: parseFloat(document.getElementById("freq_penalty").value),
+            presence_penalty: parseFloat(document.getElementById("pres_penalty").value),
+        };
+
+        socket.send(JSON.stringify(payload));
+        input.value = "";
+    }
+});
     </script>
 </body>
 </html>
