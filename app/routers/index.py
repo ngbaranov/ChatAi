@@ -1,8 +1,8 @@
 import os
 import json
-from openai import OpenAI
+from openai import AsyncOpenAI
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Body
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
@@ -30,11 +30,11 @@ DEFAULT_CONFIG = {
 }
 
 
-def get_client_for_model(model_name: str) -> OpenAI:
+def get_client_for_model(model_name: str) -> AsyncOpenAI:
     if model_name.startswith("deepseek"):
-        return OpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
+        return AsyncOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
     else:
-        return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -86,3 +86,36 @@ async def websocket_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         pass
+
+
+
+
+
+@router.post("/analyze_file")
+async def analyze_file(file: UploadFile = File(...)):
+    content = (await file.read()).decode("utf-8")
+
+    red_client = get_redis_client()
+    config_json = await red_client.get(CONFIG_KEY)
+    config = json.loads(config_json) if config_json else DEFAULT_CONFIG
+
+    model = config["model"]
+    prompt = config["prompt"]
+    temperature = config["temperature"]
+    frequency_penalty = config["frequency_penalty"]
+    presence_penalty = config["presence_penalty"]
+
+    client = get_client_for_model(model)
+
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": prompt},
+            {"role": "user", "content": f"Проанализируй этот файл:\n\n{content}"}
+        ],
+        temperature=temperature,
+        frequency_penalty=frequency_penalty,
+        presence_penalty=presence_penalty
+    )
+
+    return response.choices[0].message.content.strip()
