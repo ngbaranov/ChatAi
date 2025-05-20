@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="com.obiscr.chatgpt.settings.EasyCodeState">
+    <option name="projectFiles" value="$PROJECT_DIR$/app/routers/__init__.py;/home/nikolai/PycharmProjects/ChatAi/app/routers/index.py;/home/nikolai/PycharmProjects/ChatAi/app/services/__init__.py;/home/nikolai/PycharmProjects/ChatAi/app/services/gpt.py;/home/nikolai/PycharmProjects/ChatAi/app/templates/index.html;/home/nikolai/PycharmProjects/ChatAi/app/utils/__init__.py;/home/nikolai/PycharmProjects/ChatAi/app/utils/redis.py;/home/nikolai/PycharmProjects/ChatAi/app/__init__.py;/home/nikolai/PycharmProjects/ChatAi/main.py" />
+  </component>
+</project>

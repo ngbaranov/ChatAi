@@ -15,13 +15,22 @@
     <div id="chat"></div>
     <input id="input" type="text" placeholder="Введите сообщение..." style="width: 100%; padding: 10px;" />
 
-    <div style="max-width: 600px; margin: auto;">
+<div style="max-width: 600px; margin: auto;">
+    <label for="provider">Провайдер:</label>
+    <select id="provider" onchange="updateModelOptions()" style="width:100%">
+        <option value="openai">OpenAI</option>
+        <option value="deepseek">DeepSeek</option>
+    </select><br>
+
+    <label for="model">Модель:</label>
+    <select id="model" style="width:100%"></select><br>
+
     <label>System Prompt: <input type="text" id="prompt" value="Ты дружелюбный помощник." style="width:100%"></label><br>
-    <label>Model: <input type="text" id="model" value="deepseek-chat" style="width:100%"></label><br>
     <label>Temperature: <input type="number" id="temperature" step="0.1" value="0.2" min="0" max="2"></label><br>
     <label>Frequency Penalty: <input type="number" id="freq_penalty" step="0.1" value="0.1" min="0" max="2"></label><br>
     <label>Presence Penalty: <input type="number" id="pres_penalty" step="0.1" value="0.2" min="0" max="2"></label><br>
-    </div>
+    <button onclick="updateConfig()">Обновить настройки</button>
+</div>
 
     <script>
         const socket = new WebSocket("ws://" + location.host + "/ws/chat");
@@ -40,24 +49,59 @@
             appendMessage("🤖 " + event.data, "bot");
         };
 
-input.addEventListener("keydown", event => {
-    if (event.key === "Enter" && input.value.trim()) {
-        const message = input.value.trim();
-        appendMessage("🧑 " + message, "user");
+        input.addEventListener("keydown", event => {
+            if (event.key === "Enter" && input.value.trim()) {
+                const message = input.value.trim();
+                appendMessage("🧑 " + message, "user");
+                socket.send(JSON.stringify({ message: message }));
+                input.value = "";
+            }
+        });
 
-        const payload = {
-            message: message,
-            prompt: document.getElementById("prompt").value,
-            model: document.getElementById("model").value,
-            temperature: parseFloat(document.getElementById("temperature").value),
-            frequency_penalty: parseFloat(document.getElementById("freq_penalty").value),
-            presence_penalty: parseFloat(document.getElementById("pres_penalty").value),
-        };
+        function updateConfig() {
+            const config = {
+                prompt: document.getElementById("prompt").value,
+                model: document.getElementById("model").value,
+                temperature: parseFloat(document.getElementById("temperature").value),
+                frequency_penalty: parseFloat(document.getElementById("freq_penalty").value),
+                presence_penalty: parseFloat(document.getElementById("pres_penalty").value)
+            };
 
-        socket.send(JSON.stringify(payload));
-        input.value = "";
-    }
-});
+            fetch("/set_config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(config)
+            })
+            .then(res => res.json())
+            .then(data => {
+                alert(data.message);
+            });
+        }
+        const modelOptions = {
+    openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"],
+    deepseek: ["deepseek-chat"]
+};
+
+function updateModelOptions() {
+    const provider = document.getElementById("provider").value;
+    const modelSelect = document.getElementById("model");
+
+    // Очистить и добавить новые модели
+    modelSelect.innerHTML = "";
+    modelOptions[provider].forEach(model => {
+        const option = document.createElement("option");
+        option.value = model;
+        option.textContent = model;
+        modelSelect.appendChild(option);
+    });
+}
+
+// При загрузке страницы — установить модели по умолчанию
+window.onload = () => {
+    document.getElementById("provider").value = "deepseek";
+    updateModelOptions();
+};
+
     </script>
 </body>
 </html>

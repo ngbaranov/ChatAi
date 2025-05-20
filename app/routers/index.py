@@ -2,7 +2,7 @@ import os
 import json
 from openai import OpenAI
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Body
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
@@ -16,18 +16,44 @@ load_dotenv()
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
-client = OpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
-# client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 redis_client = get_redis_client()
-DEFAULT_SYSTEM_PROMPT = "Ты дружелюбный помощник."
-REDIS_HISTORY_KEY = "chat_history"
-MODEL_NAME = "deepseek-chat"
-# MODEL_NAME = "gpt-4.1-nano"
+
+CONFIG_KEY = "global_ai_config"
+HISTORY_KEY = "chat_history"
+
+DEFAULT_CONFIG = {
+    "prompt": "Ты дружелюбный помощник.",
+    "model": "deepseek-chat",
+    "temperature": 0.2,
+    "frequency_penalty": 0.1,
+    "presence_penalty": 0.2
+}
+
+
+def get_client_for_model(model_name: str) -> OpenAI:
+    if model_name.startswith("deepseek"):
+        return OpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
+    else:
+        return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+
+@router.post("/set_config")
+async def set_config(data: dict = Body(...)):
+    await redis_client.set(CONFIG_KEY, json.dumps(data))
+    return {"status": "ok", "message": "Настройки обновлены"}
+
+
+@router.get("/get_config")
+async def get_config():
+    config_json = await redis_client.get(CONFIG_KEY)
+    if config_json:
+        return json.loads(config_json)
+    return DEFAULT_CONFIG
 
 
 @router.websocket("/ws/chat")
@@ -39,24 +65,23 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             data = json.loads(data)
             user_message = data["message"]
-            system_prompt = data["prompt"]
-            model = data["model"]
-            temperature = data["temperature"]
-            frequency_penalty = data["frequency_penalty"]
-            presence_penalty = data["presence_penalty"]
+
+            config_json = await redis_client.get(CONFIG_KEY)
+            config = json.loads(config_json) if config_json else DEFAULT_CONFIG
+
+            client = get_client_for_model(config["model"])
+
             reply = await process_message(
                 user_message,
                 redis_client,
-                system_prompt,
-                REDIS_HISTORY_KEY,
-                model,
+                config["prompt"],
+                HISTORY_KEY,
+                config["model"],
                 client,
-                temperature,
-                frequency_penalty,
-                presence_penalty,
+                config["temperature"],
+                config["frequency_penalty"],
+                config["presence_penalty"]
             )
-
-
             await websocket.send_text(reply)
 
     except WebSocketDisconnect:
