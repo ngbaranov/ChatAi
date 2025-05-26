@@ -1,5 +1,5 @@
 import json
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 MAX_HISTORY_MESSAGES = 4
 
@@ -7,7 +7,7 @@ MAX_HISTORY_MESSAGES = 4
 
 
 async def process_message(user_message: str, redis_client, system_prompt: str, history_key: str, model: str,
-                          client: OpenAI, temperature: float, frequency_penalty: float, presence_penalty: float):
+                          client: AsyncOpenAI, temperature: float, frequency_penalty: float, presence_penalty: float):
     """Функция извлекает историю переписки из Redis по ключу history_key,
     Если история не найдена, инициализирует пустой список.
     Обрезаем историю, для экономии токенов и повышении производительности

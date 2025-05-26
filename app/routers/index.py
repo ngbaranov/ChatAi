@@ -10,6 +10,8 @@ from dotenv import load_dotenv
 import redis.asyncio as redis
 
 from app.utils.redis import get_redis_client
+from app.utils.settings import CONFIG_KEY, HISTORY_KEY, DEFAULT_CONFIG
+from app.services.get_ai import get_client_for_model
 from app.services.gpt import process_message
 
 load_dotenv()
@@ -17,60 +19,36 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 redis_client = get_redis_client()
-
-CONFIG_KEY = "global_ai_config"
-HISTORY_KEY = "chat_history"
-
-DEFAULT_CONFIG = {
-    "prompt": "Ты дружелюбный помощник.",
-    "model": "deepseek-chat",
-    "temperature": 0.2,
-    "frequency_penalty": 0.1,
-    "presence_penalty": 0.2
-}
-
-
-def get_client_for_model(model_name: str) -> AsyncOpenAI:
-    if model_name.startswith("deepseek"):
-        return AsyncOpenAI(api_key=os.getenv("DEEPSEEK_API_KEY"), base_url="https://api.deepseek.com")
-    else:
-        return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-
 @router.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@router.post("/set_config")
-async def set_config(data: dict = Body(...)):
-    await redis_client.set(CONFIG_KEY, json.dumps(data))
-    return {"status": "ok", "message": "Настройки обновлены"}
 
-
-@router.get("/get_config")
-async def get_config():
-    config_json = await redis_client.get(CONFIG_KEY)
-    if config_json:
-        return json.loads(config_json)
-    return DEFAULT_CONFIG
 
 
 @router.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
+    """
+    Эндпоинт обрабатывает WebSocket-подключения по адресу /ws/chat
+    :param websocket:
+    :return:
+    """
     await websocket.accept()
 
     try:
         while True:
+            # Ожидаем сообщение от клиента
             data = await websocket.receive_text()
             data = json.loads(data)
             user_message = data["message"]
-
+            # Получаем конфигурацию(prompt, model, temperature, frequency_penalty, presence_penalty)
             config_json = await redis_client.get(CONFIG_KEY)
             config = json.loads(config_json) if config_json else DEFAULT_CONFIG
-
+            # В зависимости от названия модели (deepseek-chat, gpt-4, и т.п.) выбирается нужный клиент AsyncOpenAI с
+            # соответствующим ключом API и base_url.
             client = get_client_for_model(config["model"])
-
+            # Обрабатываем сообщение ИИ и возвращает ответ
             reply = await process_message(
                 user_message,
                 redis_client,
@@ -82,8 +60,9 @@ async def websocket_endpoint(websocket: WebSocket):
                 config["frequency_penalty"],
                 config["presence_penalty"]
             )
+            #Ответ ИИ отправляется обратно клиенту через WebSocket.
             await websocket.send_text(reply)
-
+    #При отключении клиента (WebSocketDisconnect) происходит выход из цикла и завершение функции (без ошибки).
     except WebSocketDisconnect:
         pass
 

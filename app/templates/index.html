@@ -96,15 +96,15 @@
             presence_penalty: parseFloat(document.getElementById("pres_penalty").value)
         };
 
-        fetch("/set_config", {
+        fetch("/config/set_config", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
             body: JSON.stringify(config)
         })
-            .then(res => res.json())
-            .then(data => {
-                alert(data.message);
-            });
+        .then(res => res.json())
+        .then(data => {
+            alert(data.message);
+        });
     }
 
     const modelOptions = {
@@ -115,8 +115,6 @@
     function updateModelOptions() {
         const provider = document.getElementById("provider").value;
         const modelSelect = document.getElementById("model");
-
-        // Очистить и добавить новые модели
         modelSelect.innerHTML = "";
         modelOptions[provider].forEach(model => {
             const option = document.createElement("option");
@@ -126,25 +124,39 @@
         });
     }
 
-    // При загрузке страницы — установить модели по умолчанию
-    window.onload = () => {
-        document.getElementById("provider").value = "deepseek";
+    async function loadConfig() {
+        const res = await fetch("/config/get_config");
+        const config = await res.json();
+
+        const provider = config.model.startsWith("deepseek") ? "deepseek" : "openai";
+        document.getElementById("provider").value = provider;
+
         updateModelOptions();
+        document.getElementById("model").value = config.model;
+        document.getElementById("prompt").value = config.prompt;
+        document.getElementById("temperature").value = config.temperature;
+        document.getElementById("freq_penalty").value = config.frequency_penalty;
+        document.getElementById("pres_penalty").value = config.presence_penalty;
+    }
+
+    window.onload = () => {
+        loadConfig();
     };
+
     document.getElementById("upload-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const formData = new FormData();
-    formData.append("file", document.getElementById("file").files[0]);
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append("file", document.getElementById("file").files[0]);
 
-    const response = await fetch("/analyze_file", {
-        method: "POST",
-        body: formData
+        const response = await fetch("/analyze_file", {
+            method: "POST",
+            body: formData
+        });
+
+        const text = await response.text();
+        document.getElementById("file-result").textContent = "🤖 Ответ:\n\n" + text;
     });
-
-    const text = await response.text();
-    document.getElementById("file-result").textContent = "🤖 Ответ:\n\n" + text;
-});
-
 </script>
+
 </body>
 </html>
