@@ -1,30 +1,26 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>Чат с GPT</title>
     <style>
         body {
             font-family: sans-serif;
             margin: 40px;
         }
-
         #chat {
             max-width: 600px;
             margin: auto;
         }
-
         .msg {
             margin: 5px 0;
             padding: 8px;
             border-radius: 6px;
         }
-
         .user {
             background: #def;
             text-align: right;
         }
-
         .bot {
             background: #eee;
             text-align: left;
@@ -32,131 +28,166 @@
     </style>
 </head>
 <body>
-<div id="chat"></div>
-<input id="input" type="text" placeholder="Введите сообщение..." style="width: 100%; padding: 10px;"/>
+    <!-- Заголовок и кнопка "Новый чат" -->
+    <div style="max-width: 600px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
+        <h2>Чат с GPT</h2>
+        <button id="new-chat-btn">🆕 Новый чат</button>
+    </div>
 
-<hr>
-<h3>📄 Загрузить файл для анализа</h3>
-<form id="upload-form" enctype="multipart/form-data">
-    <input type="file" id="file" name="file"/>
-    <button type="submit">Анализировать файл</button>
-</form>
-<pre id="file-result" style="white-space: pre-wrap; background: #f0f0f0; padding: 10px;"></pre>
+    <!-- Окно чата -->
+    <div id="chat"></div>
 
-<div style="max-width: 600px; margin: auto;">
-    <label for="provider">Провайдер:</label>
-    <select id="provider" onchange="updateModelOptions()" style="width:100%">
-        <option value="openai">OpenAI</option>
-        <option value="deepseek">DeepSeek</option>
-    </select><br>
+    <!-- Поле ввода и прикрепление файла -->
+    <div style="display: flex; gap: 8px; max-width: 600px; margin: 20px auto; align-items: center;">
+        <input
+            id="input"
+            type="text"
+            placeholder="Введите сообщение или инструкцию"
+            style="flex: 1; padding: 10px;"
+        />
+        <label style="cursor: pointer; font-size: 20px;">
+            📎
+            <input id="file-input" type="file" style="display: none;" />
+        </label>
+    </div>
 
-    <label for="model">Модель:</label>
-    <select id="model" style="width:100%"></select><br>
+    <hr style="max-width: 600px; margin: 20px auto;" />
 
-    <label>System Prompt: <input type="text" id="prompt" value="Ты дружелюбный помощник."
-                                 style="width:100%"></label><br>
-    <label>Temperature: <input type="number" id="temperature" step="0.1" value="0.2" min="0" max="2"></label><br>
-    <label>Frequency Penalty: <input type="number" id="freq_penalty" step="0.1" value="0.1" min="0" max="2"></label><br>
-    <label>Presence Penalty: <input type="number" id="pres_penalty" step="0.1" value="0.2" min="0" max="2"></label><br>
-    <button onclick="updateConfig()">Обновить настройки</button>
-</div>
+    <!-- Панель настроек -->
+    <div style="max-width: 600px; margin: auto;">
+        <label for="provider">Провайдер:</label>
+        <select id="provider" onchange="updateModelOptions()" style="width: 100%;">
+            <option value="openai">OpenAI</option>
+            <option value="deepseek">DeepSeek</option>
+        </select><br/>
 
-<script>
-    const socket = new WebSocket("ws://" + location.host + "/ws/chat");
-    const input = document.getElementById("input");
-    const chat = document.getElementById("chat");
+        <label for="model">Модель:</label>
+        <select id="model" style="width: 100%;"></select><br/>
 
-    function appendMessage(text, cls) {
-        const div = document.createElement("div");
-        div.className = "msg " + cls;
-        div.textContent = text;
-        chat.appendChild(div);
-        chat.scrollTop = chat.scrollHeight;
-    }
+        <label>System Prompt:
+            <input type="text" id="prompt" style="width: 100%;" />
+        </label><br/>
 
-    socket.onmessage = event => {
-        appendMessage("🤖 " + event.data, "bot");
-    };
+        <label>Temperature:
+            <input type="number" id="temperature" step="0.1" min="0" max="2" style="width: 100%;" />
+        </label><br/>
 
-    input.addEventListener("keydown", event => {
-        if (event.key === "Enter" && input.value.trim()) {
-            const message = input.value.trim();
-            appendMessage("🧑 " + message, "user");
-            socket.send(JSON.stringify({message: message}));
-            input.value = "";
+        <label>Frequency Penalty:
+            <input type="number" id="freq_penalty" step="0.1" min="0" max="2" style="width: 100%;" />
+        </label><br/>
+
+        <label>Presence Penalty:
+            <input type="number" id="pres_penalty" step="0.1" min="0" max="2" style="width: 100%;" />
+        </label><br/>
+
+        <button onclick="updateConfig()" style="margin-top: 10px;">Обновить настройки</button>
+    </div>
+
+    <script>
+        // UI элементы
+        const chat = document.getElementById("chat");
+        const input = document.getElementById("input");
+        const fileInput = document.getElementById("file-input");
+        const newChatBtn = document.getElementById("new-chat-btn");
+
+        // WebSocket соединение
+        const socket = new WebSocket(`ws://${location.host}/ws/chat`);
+        socket.onmessage = e => appendMessage("🤖 " + e.data, "bot");
+
+        // Функция вывода сообщений
+        function appendMessage(text, cls) {
+            const d = document.createElement("div");
+            d.className = "msg " + cls;
+            d.textContent = text;
+            chat.appendChild(d);
+            chat.scrollTop = chat.scrollHeight;
         }
-    });
 
-    function updateConfig() {
-        const config = {
-            prompt: document.getElementById("prompt").value,
-            model: document.getElementById("model").value,
-            temperature: parseFloat(document.getElementById("temperature").value),
-            frequency_penalty: parseFloat(document.getElementById("freq_penalty").value),
-            presence_penalty: parseFloat(document.getElementById("pres_penalty").value)
+        // Отправка нового сообщения (Enter)
+        input.addEventListener("keydown", async ev => {
+            if (ev.key !== "Enter" || !input.value.trim()) return;
+            const text = input.value.trim();
+            input.value = "";
+            appendMessage("🧑 " + text, "user");
+
+            const payload = { message: text };
+            if (fileInput.files.length) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    payload.file = reader.result.split(",")[1];
+                    socket.send(JSON.stringify(payload));
+                    fileInput.value = "";
+                };
+                reader.readAsDataURL(fileInput.files[0]);
+            } else {
+                socket.send(JSON.stringify(payload));
+            }
+        });
+
+        // Кнопка "Новый чат"
+        newChatBtn.addEventListener("click", async () => {
+            // очищаем UI
+            chat.innerHTML = "";
+            // сбрасываем историю на сервере
+            const res = await fetch("/reset_chat", { method: "POST" });
+            const data = await res.json();
+            appendMessage("✨ " + data.message, "bot");
+        });
+
+        // Настройки моделей
+        const modelOptions = {
+            openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"],
+            deepseek: ["deepseek-chat"]
         };
 
-        fetch("/config/set_config", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(config)
-        })
-        .then(res => res.json())
-        .then(data => {
-            alert(data.message);
-        });
-    }
+        function updateModelOptions() {
+            const prov = document.getElementById("provider").value;
+            const sel = document.getElementById("model");
+            sel.innerHTML = "";
+            modelOptions[prov].forEach(m => {
+                const opt = document.createElement("option");
+                opt.value = m;
+                opt.textContent = m;
+                sel.appendChild(opt);
+            });
+        }
 
-    const modelOptions = {
-        openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"],
-        deepseek: ["deepseek-chat"]
-    };
+        // Загрузка текущих настроек из Redis
+        async function loadConfig() {
+            const res = await fetch("/config/get_config");
+            const cfg = await res.json();
+            const prov = cfg.model.startsWith("deepseek") ? "deepseek" : "openai";
+            document.getElementById("provider").value = prov;
+            updateModelOptions();
+            document.getElementById("model").value = cfg.model;
+            document.getElementById("prompt").value = cfg.prompt;
+            document.getElementById("temperature").value = cfg.temperature;
+            document.getElementById("freq_penalty").value = cfg.frequency_penalty;
+            document.getElementById("pres_penalty").value = cfg.presence_penalty;
+        }
 
-    function updateModelOptions() {
-        const provider = document.getElementById("provider").value;
-        const modelSelect = document.getElementById("model");
-        modelSelect.innerHTML = "";
-        modelOptions[provider].forEach(model => {
-            const option = document.createElement("option");
-            option.value = model;
-            option.textContent = model;
-            modelSelect.appendChild(option);
-        });
-    }
+        // Сохранение настроек
+        function updateConfig() {
+            const config = {
+                prompt: document.getElementById("prompt").value,
+                model: document.getElementById("model").value,
+                temperature: parseFloat(document.getElementById("temperature").value),
+                frequency_penalty: parseFloat(document.getElementById("freq_penalty").value),
+                presence_penalty: parseFloat(document.getElementById("pres_penalty").value)
+            };
+            fetch("/config/set_config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(config)
+            })
+            .then(r => r.json())
+            .then(d => alert(d.message));
+        }
 
-    async function loadConfig() {
-        const res = await fetch("/config/get_config");
-        const config = await res.json();
-
-        const provider = config.model.startsWith("deepseek") ? "deepseek" : "openai";
-        document.getElementById("provider").value = provider;
-
-        updateModelOptions();
-        document.getElementById("model").value = config.model;
-        document.getElementById("prompt").value = config.prompt;
-        document.getElementById("temperature").value = config.temperature;
-        document.getElementById("freq_penalty").value = config.frequency_penalty;
-        document.getElementById("pres_penalty").value = config.presence_penalty;
-    }
-
-    window.onload = () => {
-        loadConfig();
-    };
-
-    document.getElementById("upload-form").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const formData = new FormData();
-        formData.append("file", document.getElementById("file").files[0]);
-
-        const response = await fetch("/analyze_file", {
-            method: "POST",
-            body: formData
-        });
-
-        const text = await response.text();
-        document.getElementById("file-result").textContent = "🤖 Ответ:\n\n" + text;
-    });
-</script>
-
+        // Инициализация при загрузке
+        window.onload = () => {
+            loadConfig();
+        };
+    </script>
 </body>
 </html>

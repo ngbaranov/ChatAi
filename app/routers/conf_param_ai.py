@@ -9,12 +9,21 @@ router = APIRouter(prefix='/config')
 
 @router.post("/set_config")
 async def set_config(data: dict = Body(...)):
+    """
+    Обновление конфигурации модели ИИ и сохранение в Redis
+    :param data:
+    :return:
+    """
     await redis_client.set(CONFIG_KEY, json.dumps(data))
     return {"status": "ok", "message": "Настройки обновлены"}
 
 
 @router.get("/get_config")
 async def get_config():
+    """
+    Получение конфигурации модели ИИ из Redis
+    :return:
+    """
     config_json = await redis_client.get(CONFIG_KEY)
     if config_json:
         return json.loads(config_json)

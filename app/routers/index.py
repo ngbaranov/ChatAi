@@ -1,3 +1,4 @@
+import base64
 import os
 import json
 from openai import AsyncOpenAI
@@ -23,46 +24,57 @@ redis_client = get_redis_client()
 async def root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+@router.post("/reset_chat")
+async def reset_chat():
+    """
+    Удаляет из Redis ключ с историей чата.
+    """
+    await redis_client.delete(HISTORY_KEY)
+    return {"status": "ok", "message": "История чата очищена"}
+
 
 
 
 
 @router.websocket("/ws/chat")
 async def websocket_endpoint(websocket: WebSocket):
-    """
-    Эндпоинт обрабатывает WebSocket-подключения по адресу /ws/chat
-    :param websocket:
-    :return:
-    """
     await websocket.accept()
-
     try:
         while True:
-            # Ожидаем сообщение от клиента
-            data = await websocket.receive_text()
-            data = json.loads(data)
-            user_message = data["message"]
-            # Получаем конфигурацию(prompt, model, temperature, frequency_penalty, presence_penalty)
-            config_json = await redis_client.get(CONFIG_KEY)
-            config = json.loads(config_json) if config_json else DEFAULT_CONFIG
-            # В зависимости от названия модели (deepseek-chat, gpt-4, и т.п.) выбирается нужный клиент AsyncOpenAI с
-            # соответствующим ключом API и base_url.
+            raw = await websocket.receive_text()
+            data = json.loads(raw)
+
+            # Основное сообщение (инструкция или обычный чат)
+            user_msg = data.get("message", "")
+
+            # Если пришёл файл — декодируем и добавляем к запросу
+            if file_b64 := data.get("file"):
+                content = base64.b64decode(file_b64).decode("utf-8")
+                # Объединяем инструкцию и содержимое файла
+                user_msg = f"{user_msg}:\n\n{content}"
+
+            # Берём глобальные настройки из Redis
+            cfg_json = await redis_client.get(CONFIG_KEY)
+            config = json.loads(cfg_json) if cfg_json else DEFAULT_CONFIG
+
+            # Инициализируем нужный клиент
             client = get_client_for_model(config["model"])
-            # Обрабатываем сообщение ИИ и возвращает ответ
+
+            # Обрабатываем через ту же логику process_message
             reply = await process_message(
-                user_message,
+                user_msg,
                 redis_client,
                 config["prompt"],
-                HISTORY_KEY,
-                config["model"],
-                client,
-                config["temperature"],
-                config["frequency_penalty"],
-                config["presence_penalty"]
+                history_key=HISTORY_KEY,
+                model=config["model"],
+                client=client,
+                temperature=config["temperature"],
+                frequency_penalty=config["frequency_penalty"],
+                presence_penalty=config["presence_penalty"],
             )
-            #Ответ ИИ отправляется обратно клиенту через WebSocket.
+
             await websocket.send_text(reply)
-    #При отключении клиента (WebSocketDisconnect) происходит выход из цикла и завершение функции (без ошибки).
+
     except WebSocketDisconnect:
         pass
 
@@ -70,31 +82,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 
-@router.post("/analyze_file")
-async def analyze_file(file: UploadFile = File(...)):
-    content = (await file.read()).decode("utf-8")
 
-    red_client = get_redis_client()
-    config_json = await red_client.get(CONFIG_KEY)
-    config = json.loads(config_json) if config_json else DEFAULT_CONFIG
 
-    model = config["model"]
-    prompt = config["prompt"]
-    temperature = config["temperature"]
-    frequency_penalty = config["frequency_penalty"]
-    presence_penalty = config["presence_penalty"]
 
-    client = get_client_for_model(model)
 
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": f"Проанализируй этот файл:\n\n{content}"}
-        ],
-        temperature=temperature,
-        frequency_penalty=frequency_penalty,
-        presence_penalty=presence_penalty
-    )
-
-    return response.choices[0].message.content.strip()
