@@ -3,7 +3,7 @@ import json
 from fastapi import Body, APIRouter
 
 from app.routers.index import redis_client
-from app.utils.settings import CONFIG_KEY, DEFAULT_CONFIG
+from app.utils.variables import CONFIG_KEY, DEFAULT_CONFIG
 
 router = APIRouter(prefix='/config')
 

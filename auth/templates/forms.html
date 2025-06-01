@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Информация о регистрации</title>
+</head>
+<body>
+{%if answer == "Пользователь успешно создан"%}
+<p><a href="/add_car">Добавить автомобиль</a></p>
+{%else%}
+<p><a href="/auth/reg">Пользователь с таким именем уже существует, введите другое имя</a></p>
+{%endif%}
+</body>
+</html>
