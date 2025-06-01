@@ -1,19 +1,21 @@
 import base64
-import os
 import json
-from openai import AsyncOpenAI
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File
+
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
 from dotenv import load_dotenv
 import redis.asyncio as redis
+from jose import jwt, JWTError
 
+from app.services.get_token import get_user_id_from_cookie
 from app.utils.redis import get_redis_client
-from app.utils.settings import CONFIG_KEY, HISTORY_KEY, DEFAULT_CONFIG
+from app.utils.variables import CONFIG_KEY, HISTORY_KEY, DEFAULT_CONFIG
 from app.services.get_ai import get_client_for_model
 from app.services.gpt import process_message
+from settings import settings
 
 load_dotenv()
 router = APIRouter()
@@ -25,12 +27,20 @@ async def root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @router.post("/reset_chat")
-async def reset_chat():
-    """
-    Удаляет из Redis ключ с историей чата.
-    """
-    await redis_client.delete(HISTORY_KEY)
-    return {"status": "ok", "message": "История чата очищена"}
+async def reset_chat(request: Request):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="No token")
+
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        user_id = int(payload.get("id"))
+        history_key = f"chat:{user_id}:history"
+        await redis_client.delete(history_key)
+        return {"status": "ok", "message": "История чата очищена"}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
 
 
 
@@ -40,6 +50,9 @@ async def reset_chat():
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
+        user_id = get_user_id_from_cookie(websocket)
+        history_key = f"chat:{user_id}:history"
+        config_key = f"chat:{user_id}:config"
         while True:
             raw = await websocket.receive_text()
             data = json.loads(raw)
@@ -54,7 +67,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 user_msg = f"{user_msg}:\n\n{content}"
 
             # Берём глобальные настройки из Redis
-            cfg_json = await redis_client.get(CONFIG_KEY)
+            cfg_json = await redis_client.get(config_key)
             config = json.loads(cfg_json) if cfg_json else DEFAULT_CONFIG
 
             # Инициализируем нужный клиент
@@ -65,7 +78,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 user_msg,
                 redis_client,
                 config["prompt"],
-                history_key=HISTORY_KEY,
+                history_key=history_key,
                 model=config["model"],
                 client=client,
                 temperature=config["temperature"],
