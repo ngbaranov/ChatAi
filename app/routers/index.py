@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 import redis.asyncio as redis
 from jose import jwt, JWTError
 
-from app.services.get_token import get_user_id_from_cookie
+from app.services.get_token import get_user_id
 from app.utils.redis import get_redis_client
 from app.utils.variables import CONFIG_KEY, HISTORY_KEY, DEFAULT_CONFIG
 from app.services.get_ai import get_client_for_model
@@ -33,7 +33,7 @@ async def reset_chat(request: Request):
         raise HTTPException(status_code=401, detail="No token")
 
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = int(payload.get("id"))
         history_key = f"chat:{user_id}:history"
         await redis_client.delete(history_key)
@@ -50,7 +50,7 @@ async def reset_chat(request: Request):
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     try:
-        user_id = get_user_id_from_cookie(websocket)
+        user_id = get_user_id(websocket)
         history_key = f"chat:{user_id}:history"
         config_key = f"chat:{user_id}:config"
         while True:

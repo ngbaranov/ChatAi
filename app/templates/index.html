@@ -206,10 +206,11 @@
     }
 
     // Инициализация при загрузке
-    window.onload = () => {
-        loadConfig();
-        connectSocket();
-    };
+window.onload = async () => {
+    await refreshAccessToken();  // сначала токен
+    await loadConfig();          // потом настройки
+    await connectSocket();       // потом сокет
+};
 </script>
 </body>
 </html>
