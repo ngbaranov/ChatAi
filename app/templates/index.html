@@ -8,209 +8,144 @@
             font-family: sans-serif;
             margin: 40px;
         }
-
         #chat {
             max-width: 600px;
             margin: auto;
         }
-
         .msg {
             margin: 5px 0;
             padding: 8px;
             border-radius: 6px;
         }
-
         .user {
             background: #def;
             text-align: right;
         }
-
         .bot {
             background: #eee;
             text-align: left;
         }
+        /* Markdown styling */
+        .bot p {
+            margin: 8px 0;
+        }
+        .bot h1, .bot h2, .bot h3, .bot h4, .bot h5, .bot h6 {
+            margin: 12px 0 6px;
+        }
+        .bot ul {
+            padding-left: 20px;
+            margin: 8px 0;
+        }
+        .bot li {
+            margin: 4px 0;
+        }
     </style>
+    <!-- Markdown parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-<!-- Заголовок и кнопка "Новый чат" -->
-<div style="max-width: 600px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
-    <h2>Чат с GPT</h2>
-    <button id="new-chat-btn">🆕 Новый чат</button>
-</div>
-
-<!-- Окно чата -->
-<div id="chat"></div>
-
-<!-- Поле ввода и прикрепление файла -->
-<div style="display: flex; gap: 8px; max-width: 600px; margin: 20px auto; align-items: center;">
-    <input
-            id="input"
-            type="text"
-            placeholder="Введите сообщение или инструкцию"
-            style="flex: 1; padding: 10px;"
-    />
-    <label style="cursor: pointer; font-size: 20px;">
-        📎
-        <input id="file-input" type="file" style="display: none;"/>
-    </label>
-</div>
-
-<hr style="max-width: 600px; margin: 20px auto;"/>
-
-<!-- Панель настроек -->
-<div style="max-width: 600px; margin: auto;">
-    <label for="provider">Провайдер:</label>
-    <select id="provider" onchange="updateModelOptions()" style="width: 100%;">
-        <option value="openai">OpenAI</option>
-        <option value="deepseek">DeepSeek</option>
-    </select><br/>
-
-    <label for="model">Модель:</label>
-    <select id="model" style="width: 100%;"></select><br/>
-
-    <label>System Prompt:
-        <input type="text" id="prompt" style="width: 100%;"/>
-    </label><br/>
-
-    <label>Temperature:
-        <input type="number" id="temperature" step="0.1" min="0" max="2" style="width: 100%;"/>
-    </label><br/>
-
-    <label>Frequency Penalty:
-        <input type="number" id="freq_penalty" step="0.1" min="0" max="2" style="width: 100%;"/>
-    </label><br/>
-
-    <label>Presence Penalty:
-        <input type="number" id="pres_penalty" step="0.1" min="0" max="2" style="width: 100%;"/>
-    </label><br/>
-
-    <button onclick="updateConfig()" style="margin-top: 10px;">Обновить настройки</button>
-</div>
-
-<script>
-    // UI элементы
-    const chat = document.getElementById("chat");
-    const input = document.getElementById("input");
-    const fileInput = document.getElementById("file-input");
-    const newChatBtn = document.getElementById("new-chat-btn");
-
-    // Функция обновления токена
-    async function refreshAccessToken() {
-        try {
-            const res = await fetch("/auth/refresh", {method: "POST"});
-            if (!res.ok) throw new Error("Refresh failed");
-            console.log("Access token refreshed");
-        } catch (err) {
-            alert("Сессия истекла. Пожалуйста, войдите заново.");
-            location.href = "/auth/login";  // или /login
+    <div style="max-width: 600px; margin: auto; display: flex; justify-content: space-between; align-items: center;">
+        <h2>Чат с GPT</h2>
+        <button id="new-chat-btn">🆕 Новый чат</button>
+    </div>
+    <div id="chat"></div>
+    <div style="display: flex; gap: 8px; max-width: 600px; margin: 20px auto; align-items: center;">
+        <input id="input" type="text" placeholder="Введите сообщение или инструкцию" style="flex: 1; padding: 10px;" />
+        <label style="cursor: pointer; font-size: 20px;">📎
+            <input id="file-input" type="file" multiple style="display: none;"/>
+        </label>
+    </div>
+    <div id="file-list" style="max-width: 600px; margin: 0 auto 20px; font-size: 0.9em; color: #555;"></div>
+    <hr style="max-width: 600px; margin: 20px auto;"/>
+    <div style="max-width: 600px; margin: auto;">
+        <label for="provider">Провайдер:</label>
+        <select id="provider" onchange="updateModelOptions()" style="width: 100%;">
+            <option value="openai">OpenAI</option>
+            <option value="deepseek">DeepSeek</option>
+        </select><br/>
+        <label for="model">Модель:</label>
+        <select id="model" style="width: 100%;"></select><br/>
+        <label>System Prompt:
+            <input type="text" id="prompt" style="width: 100%;"/>
+        </label><br/>
+        <label>Temperature:
+            <input type="number" id="temperature" step="0.1" min="0" max="2" style="width: 100%;"/>
+        </label><br/>
+        <label>Frequency Penalty:
+            <input type="number" id="freq_penalty" step="0.1" min="0" max="2" style="width: 100%;"/>
+        </label><br/>
+        <label>Presence Penalty:
+            <input type="number" id="pres_penalty" step="0.1" min="0" max="2" style="width: 100%;"/>
+        </label><br/>
+        <button onclick="updateConfig()" style="margin-top: 10px;">Обновить настройки</button>
+    </div>
+    <script>
+        const chat = document.getElementById("chat");
+        const input = document.getElementById("input");
+        const fileInput = document.getElementById("file-input");
+        const fileList = document.getElementById("file-list");
+        const newChatBtn = document.getElementById("new-chat-btn");
+        let selectedFiles = [];
+        let socket;
+        const modelOptions = { openai: ["gpt-4.1","gpt-4.1-mini","gpt-4.1-nano"], deepseek: ["deepseek-chat"] };
+        function updateModelOptions() {
+            const prov = document.getElementById("provider").value;
+            const sel = document.getElementById("model"); sel.innerHTML = "";
+            modelOptions[prov].forEach(m=>{ const opt=document.createElement("option"); opt.value=m; opt.textContent=m; sel.appendChild(opt); });
         }
-    }
-
-    // WebSocket соединение
-    let socket;
-
-    async function connectSocket() {
-        await refreshAccessToken();  // сначала попытка обновить access_token
-        socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/chat`);
-        socket.onmessage = e => appendMessage("🤖 " + e.data, "bot");
-    }
-
-    // Функция вывода сообщений
-    function appendMessage(text, cls) {
-        const d = document.createElement("div");
-        d.className = "msg " + cls;
-        d.textContent = text;
-        chat.appendChild(d);
-        chat.scrollTop = chat.scrollHeight;
-    }
-
-    // Отправка нового сообщения (Enter)
-    input.addEventListener("keydown", async ev => {
-        if (ev.key !== "Enter" || !input.value.trim()) return;
-        const text = input.value.trim();
-        input.value = "";
-        appendMessage("🧑 " + text, "user");
-
-        const payload = {message: text};
-        if (fileInput.files.length) {
-            const reader = new FileReader();
-            reader.onload = () => {
-                payload.file = reader.result.split(",")[1];
-                socket.send(JSON.stringify(payload));
-                fileInput.value = "";
+        async function loadConfig() {
+            const res=await fetch("/config/get_config"); const cfg=await res.json();
+            const prov=cfg.model.startsWith("deepseek")?"deepseek":"openai";
+            document.getElementById("provider").value=prov; updateModelOptions();
+            document.getElementById("model").value=cfg.model; document.getElementById("prompt").value=cfg.prompt;
+            document.getElementById("temperature").value=cfg.temperature;
+            document.getElementById("freq_penalty").value=cfg.frequency_penalty;
+            document.getElementById("pres_penalty").value=cfg.presence_penalty;
+        }
+        function updateConfig() {
+            const config={
+                prompt:document.getElementById("prompt").value,
+                model:document.getElementById("model").value,
+                temperature:parseFloat(document.getElementById("temperature").value),
+                frequency_penalty:parseFloat(document.getElementById("freq_penalty").value),
+                presence_penalty:parseFloat(document.getElementById("pres_penalty").value)
             };
-            reader.readAsDataURL(fileInput.files[0]);
-        } else {
-            socket.send(JSON.stringify(payload));
+            fetch("/config/set_config",{
+                method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(config)
+            }).then(r=>r.json()).then(d=>alert(d.message));
         }
-    });
-
-    // Кнопка "Новый чат"
-    newChatBtn.addEventListener("click", async () => {
-        // очищаем UI
-        chat.innerHTML = "";
-        // сбрасываем историю на сервере
-        const res = await fetch("/reset_chat", {method: "POST"});
-        const data = await res.json();
-        appendMessage("✨ " + data.message, "bot");
-    });
-
-    // Настройки моделей
-    const modelOptions = {
-        openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"],
-        deepseek: ["deepseek-chat"]
-    };
-
-    function updateModelOptions() {
-        const prov = document.getElementById("provider").value;
-        const sel = document.getElementById("model");
-        sel.innerHTML = "";
-        modelOptions[prov].forEach(m => {
-            const opt = document.createElement("option");
-            opt.value = m;
-            opt.textContent = m;
-            sel.appendChild(opt);
+        async function refreshAccessToken() {
+            try { const res=await fetch("/auth/refresh",{method:"POST"}); if(!res.ok) throw 0;} catch {
+                alert("Сессия истекла. Пожалуйста, войдите заново."); location.href="/auth/login";
+            }
+        }
+        async function connectSocket() {
+            await refreshAccessToken();
+            socket=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws/chat`);
+            socket.onmessage=e=>{
+                const markdown=e.data;
+                const html=marked.parse(markdown);
+                appendMessageHtml(html,"bot");
+            };
+        }
+        function appendMessage(text,cls){ const d=document.createElement("div");d.className="msg "+cls; d.textContent=text; chat.appendChild(d); chat.scrollTop=chat.scrollHeight; }
+        function appendMessageHtml(html,cls){ const d=document.createElement("div"); d.className="msg "+cls; d.innerHTML=html; chat.appendChild(d); chat.scrollTop=chat.scrollHeight; }
+        function updateFileListUI(){ if(!selectedFiles.length){ fileList.textContent=""; return;} fileList.innerHTML="Выбраны файлы:<br>"+ selectedFiles.map(f=>`• ${f.name}`).join("<br>"); }
+        fileInput.addEventListener("change",()=>{
+            for(const file of fileInput.files){ if(!selectedFiles.some(f=>f.name===file.name&&f.size===file.size)) selectedFiles.push(file); }
+            updateFileListUI(); fileInput.value="";
         });
-    }
-
-    // Загрузка текущих настроек из Redis
-    async function loadConfig() {
-        const res = await fetch("/config/get_config");
-        const cfg = await res.json();
-        const prov = cfg.model.startsWith("deepseek") ? "deepseek" : "openai";
-        document.getElementById("provider").value = prov;
-        updateModelOptions();
-        document.getElementById("model").value = cfg.model;
-        document.getElementById("prompt").value = cfg.prompt;
-        document.getElementById("temperature").value = cfg.temperature;
-        document.getElementById("freq_penalty").value = cfg.frequency_penalty;
-        document.getElementById("pres_penalty").value = cfg.presence_penalty;
-    }
-
-    // Сохранение настроек
-    function updateConfig() {
-        const config = {
-            prompt: document.getElementById("prompt").value,
-            model: document.getElementById("model").value,
-            temperature: parseFloat(document.getElementById("temperature").value),
-            frequency_penalty: parseFloat(document.getElementById("freq_penalty").value),
-            presence_penalty: parseFloat(document.getElementById("pres_penalty").value)
-        };
-        fetch("/config/set_config", {
-            method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify(config)
-        })
-            .then(r => r.json())
-            .then(d => alert(d.message));
-    }
-
-    // Инициализация при загрузке
-window.onload = async () => {
-    await refreshAccessToken();  // сначала токен
-    await loadConfig();          // потом настройки
-    await connectSocket();       // потом сокет
-};
-</script>
+        input.addEventListener("keydown",async ev=>{
+            if(ev.key!="Enter"||!input.value.trim())return;
+            const text=input.value.trim(); input.value="";
+            appendMessage("🧑 "+text,"user");
+            const payload={message:text};
+            if(selectedFiles.length){ payload.files=await Promise.all(selectedFiles.map(file=> new Promise((res,rej)=>{ const reader=new FileReader(); reader.onload=()=>res(reader.result.split(",")[1]); reader.onerror=rej; reader.readAsDataURL(file);}))); }
+            socket.send(JSON.stringify(payload));
+            selectedFiles=[]; updateFileListUI();
+        });
+        newChatBtn.addEventListener("click",async()=>{ chat.innerHTML=""; const r=await fetch("/reset_chat",{method:"POST"}); const d=await r.json(); appendMessage("✨ "+d.message,"bot"); });
+        window.onload=async()=>{ await refreshAccessToken(); await loadConfig(); await connectSocket(); };
+    </script>
 </body>
 </html>

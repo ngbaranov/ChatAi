@@ -2,12 +2,11 @@ import base64
 import json
 
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, Body, UploadFile, File, HTTPException
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
 from dotenv import load_dotenv
-import redis.asyncio as redis
 from jose import jwt, JWTError
 
 from app.services.get_token import get_user_id
@@ -61,10 +60,17 @@ async def websocket_endpoint(websocket: WebSocket):
             user_msg = data.get("message", "")
 
             # Если пришёл файл — декодируем и добавляем к запросу
-            if file_b64 := data.get("file"):
-                content = base64.b64decode(file_b64).decode("utf-8")
+            if file_list := data.get("files"):
+                combined_content = ""
+                for file_b64 in file_list:
+                    try:
+                        content = base64.b64decode(file_b64).decode("utf-8")
+                        combined_content += f"\n\n{content}"
+                    except Exception as e:
+                        combined_content += f"\n\n[Ошибка при обработке файла: {e}]"
+
                 # Объединяем инструкцию и содержимое файла
-                user_msg = f"{user_msg}:\n\n{content}"
+                user_msg = f"{user_msg}:\n\n{combined_content.strip()}"
 
             # Берём глобальные настройки из Redis
             cfg_json = await redis_client.get(config_key)
