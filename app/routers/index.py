@@ -52,14 +52,27 @@ async def websocket_endpoint(websocket: WebSocket):
         user_id = get_user_id(websocket)
         history_key = f"chat:{user_id}:history"
         config_key = f"chat:{user_id}:config"
+
+        # Загружаем и отправляем историю чата
+        stored = await redis_client.lrange(history_key, 0, -1)
+        for item in stored:
+            msg = json.loads(item)
+            await websocket.send_text(json.dumps({
+                "role": msg["role"],
+                "content": msg["content"]
+            }))
+
         while True:
             raw = await websocket.receive_text()
             data = json.loads(raw)
-
-            # Основное сообщение (инструкция или обычный чат)
             user_msg = data.get("message", "")
 
-            # Если пришёл файл — декодируем и добавляем к запросу
+            await websocket.send_text(json.dumps({
+                "role": "user",
+                "content": user_msg
+            }))
+
+            # Обработка файлов (если есть)
             if file_list := data.get("files"):
                 combined_content = ""
                 for file_b64 in file_list:
@@ -68,18 +81,13 @@ async def websocket_endpoint(websocket: WebSocket):
                         combined_content += f"\n\n{content}"
                     except Exception as e:
                         combined_content += f"\n\n[Ошибка при обработке файла: {e}]"
-
-                # Объединяем инструкцию и содержимое файла
                 user_msg = f"{user_msg}:\n\n{combined_content.strip()}"
 
-            # Берём глобальные настройки из Redis
+            # Получаем конфиг и вызываем process_message (он сам сохранит историю)
             cfg_json = await redis_client.get(config_key)
             config = json.loads(cfg_json) if cfg_json else DEFAULT_CONFIG
-
-            # Инициализируем нужный клиент
             client = get_client_for_model(config["model"])
 
-            # Обрабатываем через ту же логику process_message
             reply = await process_message(
                 user_msg,
                 redis_client,
@@ -92,7 +100,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 presence_penalty=config["presence_penalty"],
             )
 
-            await websocket.send_text(reply)
+            # Отправляем только ответ бота
+            await websocket.send_text(json.dumps({
+                "role": "assistant",
+                "content": reply
+            }))
 
     except WebSocketDisconnect:
         pass
