@@ -2,27 +2,35 @@ import json
 from openai import AsyncOpenAI
 
 MAX_HISTORY_MESSAGES = 4
+MAX_STORED_MESSAGES = 50
 
 
 
 
 async def process_message(user_message: str, redis_client, system_prompt: str, history_key: str, model: str,
                           client: AsyncOpenAI, temperature: float, frequency_penalty: float, presence_penalty: float):
-    """Функция извлекает историю переписки из Redis по ключу history_key,
-    Если история не найдена, инициализирует пустой список.
-    Обрезаем историю, для экономии токенов и повышении производительности
     """
-    history_json = await redis_client.get(history_key)
-    full_history = json.loads(history_json) if history_json else []
+    Обрабатывает новое сообщение пользователя и взаимодействует с OpenAI API,
+    сохраняя историю в Redis как список элементов.
+    """
+    # 1) Читаем всю историю списка из Redis
+    raw_history = await redis_client.lrange(history_key, 0, -1)
+    full_history = [json.loads(item) for item in raw_history]
+
+    # дополнительно меняем роль "bot" на "assistant"
+    for msg in full_history:
+        if msg.get("role") == "bot":
+            msg["role"] = "assistant"
+
+    # 2) Обрезаем историю для контекста модели
     trimmed_history = full_history[-MAX_HISTORY_MESSAGES:]
 
-    """
-    Формирует список сообщений для отправки API, 
-    Сначала идет системный промпт, затем сокращённая история, затем новое сообщение пользователя.
-    """
-
-    messages = [{"role": "system", "content": system_prompt}]+trimmed_history
-    messages.append({"role": "user", "content": user_message})
+    # 3) Формируем payload для API: системный промпт, сокращённая история, новое сообщение
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ] + trimmed_history + [
+        {"role": "user", "content": user_message}
+    ]
 
     """
     Отправляет запрос в OpenAI API для получения ответа.
@@ -35,22 +43,16 @@ async def process_message(user_message: str, redis_client, system_prompt: str, h
         frequency_penalty=frequency_penalty,
         presence_penalty=presence_penalty
     )
+    # Извлекает ответ ИИ из полученного ответа от API и очищает лишние пробелы.
 
-    """
-    Извлекает ответ ИИ из полученного ответа от API и очищает лишние пробелы.
-    """
     reply = response.choices[0].message.content.strip()
 
-    """
-    Добавляет новое сообщение пользователя и ответ ИИ в историю.
-    Сохраняет обновленную историю в Redis.
-    """
-    full_history.append({"role": "user", "content": user_message})
-    full_history.append({"role": "assistant", "content": reply})
-    await redis_client.set(history_key, json.dumps(full_history))
+    # 5) Сохраняем новые сообщения в Redis (список)
+    await redis_client.rpush(history_key, json.dumps({"role": "user", "content": user_message}))
+    await redis_client.rpush(history_key, json.dumps({"role": "assistant", "content": reply}))
+    # 6) Обрезаем список до последних MAX_STORED_MESSAGES элементов
+    await redis_client.ltrim(history_key, -MAX_STORED_MESSAGES, -1)
 
-    """
-    Возвращает ответ ИИ клиенту.
-    """
-
+    # 7) Возвращаем ответ ИИ
     return reply
+
