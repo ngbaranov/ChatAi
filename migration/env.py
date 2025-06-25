@@ -9,6 +9,7 @@ from alembic import context
 
 from database.db import DATABASE_URL, Base
 from  auth.model import User
+from  app.models.chat_history import ChatHistory
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
