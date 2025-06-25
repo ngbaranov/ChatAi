@@ -10,10 +10,12 @@ from dotenv import load_dotenv
 from jose import jwt, JWTError
 
 from app.services.get_token import get_user_id
+from app.services.save_history_from_redis import save_history_from_redis
 from app.utils.redis import get_redis_client
 from app.utils.variables import CONFIG_KEY, HISTORY_KEY, DEFAULT_CONFIG
 from app.services.get_ai import get_client_for_model
 from app.services.gpt import process_message
+from database.db import async_session_maker
 from settings import settings
 
 load_dotenv()
@@ -107,9 +109,8 @@ async def websocket_endpoint(websocket: WebSocket):
             }))
 
     except WebSocketDisconnect:
-        pass
-
-print("index")
+        async with async_session_maker() as session:
+            await save_history_from_redis(user_id, redis_client, session)
 
 
 
