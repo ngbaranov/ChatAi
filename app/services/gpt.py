@@ -7,12 +7,14 @@ MAX_STORED_MESSAGES = 50
 
 
 
-async def process_message(user_message: str, redis_client, system_prompt: str, history_key: str, model: str,
+async def process_message(user_id: int, user_message: str, redis_client, system_prompt: str, history_key: str, model: str,
                           client: AsyncOpenAI, temperature: float, frequency_penalty: float, presence_penalty: float):
     """
     Обрабатывает новое сообщение пользователя и взаимодействует с OpenAI API,
     сохраняя историю в Redis как список элементов.
     """
+
+    history_key = f"chat:{user_id}:history"
     # 1) Читаем всю историю списка из Redis
     raw_history = await redis_client.lrange(history_key, 0, -1)
     full_history = [json.loads(item) for item in raw_history]

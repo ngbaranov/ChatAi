@@ -1,4 +1,4 @@
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,3 +28,19 @@ class BaseDAO:
 
         result = await session.execute(query)
         return result.scalars().first()
+
+
+
+        result = await session.execute(stmt)
+        # Возвращаем список кортежей: (session_id, start_time, preview)
+        return [(row.session_id, row.start_time, row.message[:50]) for row in result]
+
+    @classmethod
+    async def get_by_session(cls, session, user_id: int, session_id: str):
+        stmt = (
+            select(cls.model)
+            .where(cls.model.user_id == user_id, cls.model.session_id == session_id)
+            .order_by(cls.model.timestamp)
+        )
+        result = await session.execute(stmt)
+        return result.scalars().all()
