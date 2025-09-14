@@ -67,7 +67,7 @@
 
 
         <div class="input-group mb-2">
-            <input id="input" type="text" class="form-control" placeholder="Введите сообщение или инструкцию">
+            <textarea id="input" class="form-control" rows="2" placeholder="Введите сообщение или инструкцию"></textarea>
             <button id="send-btn" class="btn btn-primary">Отправить</button>
             <label class="input-group-text" for="file-input">📎</label>
             <input id="file-input" type="file" multiple style="display: none">
@@ -137,7 +137,7 @@
 
     let selectedFiles = [];
     let socket;
-    const modelOptions = {openai: ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano"], deepseek: ["deepseek-chat"]};
+    const modelOptions = {openai: ["gpt-5", "gpt-4.1-mini", "gpt-4.1-nano"], deepseek: ["deepseek-chat"]};
 
     function updateModelOptions() {
         const prov = document.getElementById("provider").value;
@@ -244,7 +244,8 @@
             if (role === "user") {
                 appendMessage(plainText, "user");
             } else {
-                appendMessageHtml(plainText, "bot");
+                const html = marked.parse(content.trim());
+                appendMessageHtml("🤖 " + html, "bot");
             }
         };
     }
@@ -290,6 +291,9 @@
         if (!input.value.trim()) return;
         const text = input.value.trim();
         input.value = "";
+
+        appendMessage("🧑 " + text, "user");
+
         const payload = {message: text};
         if (selectedFiles.length) {
             payload.files = await Promise.all(selectedFiles.map(file => new Promise((res, rej) => {

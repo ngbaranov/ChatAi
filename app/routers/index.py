@@ -99,6 +99,10 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
 
             user_msg = parsed_data.get("message")
 
+            if "files" in parsed_data and parsed_data["files"]:
+                files_text = await process_files(parsed_data["files"])
+                user_msg += f"\n\n[Вложенные файлы:]\n{files_text}"
+
             # ⚙️ Загружаем конфиг пользователя
             config_data = await redis_client.hgetall(f"{CONFIG_KEY}:{user_id}") or DEFAULT_CONFIG
             system_prompt = config_data.get("prompt", DEFAULT_CONFIG["prompt"])
@@ -130,7 +134,7 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
     except WebSocketDisconnect:
         print("❌ Отключение WebSocket")
         try:
-            await save_history_from_redis(user_id, db)
+            await save_history_from_redis(user_id, db, limit=200)
         except Exception as e:
             print(f"❌ Ошибка при сохранении истории: {e}")
 
