@@ -1,7 +1,5 @@
 import base64
 import json
-import asyncio
-
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
@@ -11,14 +9,12 @@ from dotenv import load_dotenv
 from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.get_token import get_user_id
 from app.services.save_history_from_redis import save_history_from_redis
 from app.utils.redis import get_redis_client
-from app.utils.variables import CONFIG_KEY, HISTORY_KEY, DEFAULT_CONFIG
+from app.utils.variables import CONFIG_KEY, DEFAULT_CONFIG
 from app.services.get_ai import get_client_for_model
 from app.services.gpt import process_message
 from dao.dao import ChatHistoryDAO
-from database.db import async_session_maker
 from database.db_depends import get_db
 from settings import settings
 
@@ -43,7 +39,7 @@ async def root(request: Request, db: AsyncSession = Depends(get_db)):
     return templates.TemplateResponse("index.html", {"request": request, "sessions": sessions})
 
 @router.post("/reset_chat")
-async def reset_chat(request: Request):
+async def reset_chat(request: Request, db: AsyncSession = Depends(get_db)):
     token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(status_code=401, detail="No token")
@@ -51,6 +47,10 @@ async def reset_chat(request: Request):
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = int(payload.get("id"))
+
+        # Сохраняем текущую историю в БД перед очисткой
+        await save_history_from_redis(user_id, db, limit=200)
+
         history_key = f"chat:{user_id}:history"
         await redis_client.delete(history_key)
         return {"status": "ok", "message": "История чата очищена"}
@@ -61,6 +61,8 @@ async def reset_chat(request: Request):
 async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)):
     await websocket.accept()
     print("🔌 WebSocket открыт")
+
+    user_id = None  # Инициализируем переменную
 
     try:
         token = websocket.cookies.get("access_token")
@@ -133,10 +135,11 @@ async def websocket_endpoint(websocket: WebSocket, db: AsyncSession = Depends(ge
 
     except WebSocketDisconnect:
         print("❌ Отключение WebSocket")
-        try:
-            await save_history_from_redis(user_id, db, limit=200)
-        except Exception as e:
-            print(f"❌ Ошибка при сохранении истории: {e}")
+        if user_id:  # Проверяем, что user_id определен
+            try:
+                await save_history_from_redis(user_id, db, limit=10)
+            except Exception as e:
+                print(f"❌ Ошибка при сохранении истории: {e}")
 
     except Exception as e:
         print(f"❌ Ошибка WebSocket: {e}")
@@ -190,9 +193,17 @@ async def load_session(request: Request, session_id: str, db: AsyncSession = Dep
     print(f"🚩 Установлен флаг LOADED_FROM_DB для user_id={user_id}")
     return {"status": "ok"}
 
+@router.get("/api/sessions")
+async def get_sessions(request: Request, db: AsyncSession = Depends(get_db)):
+    token = request.cookies.get("access_token")
+    if not token:
+        return {"sessions": []}
 
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = int(payload.get("id"))
+    except JWTError:
+        return {"sessions": []}
 
-
-
-
-
+    sessions = await ChatHistoryDAO.get_sessions_summary(db, user_id)
+    return {"sessions": sessions}
