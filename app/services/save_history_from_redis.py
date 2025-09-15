@@ -41,14 +41,54 @@ async def save_history_from_redis(user_id: int, db: AsyncSession, limit: int = 2
         await db.commit()
         print(f"✅ Сохранено {len(messages)} сообщений в БД (user_id={user_id})")
 
-        await _cleanup_old_records(db, limit)
+        # Ограничиваем количество сессий до 10 для каждого пользователя
+        await _cleanup_old_sessions(db, user_id, sessions_limit=10)
 
         # await redis_client.delete(history_key)
         print(f"🧹 Redis очищен: {history_key}")
 
 
+async def _cleanup_old_sessions(db: AsyncSession, user_id: int, sessions_limit: int = 10):
+    """Удаляет старые сессии для конкретного пользователя, оставляя только последние sessions_limit сессий"""
+
+    # Получаем все сессии пользователя, отсортированные по времени создания (самые новые первыми)
+    sessions_query = select(
+        ChatHistory.session_id,
+        func.min(ChatHistory.timestamp).label("start_time")
+    ).where(
+        ChatHistory.user_id == user_id
+    ).group_by(
+        ChatHistory.session_id
+    ).order_by(
+        func.min(ChatHistory.timestamp).desc()
+    )
+
+    result = await db.execute(sessions_query)
+    sessions = result.fetchall()
+
+    if len(sessions) <= sessions_limit:
+        print(f"📊 У пользователя {user_id} всего {len(sessions)} сессий, лимит: {sessions_limit} — очистка не нужна")
+        return 0
+
+    # Получаем session_id сессий, которые нужно удалить (все кроме последних sessions_limit)
+    sessions_to_delete = [session.session_id for session in sessions[sessions_limit:]]
+
+    if sessions_to_delete:
+        # Удаляем все сообщения из старых сессий
+        delete_stmt = delete(ChatHistory).where(
+            ChatHistory.user_id == user_id,
+            ChatHistory.session_id.in_(sessions_to_delete)
+        )
+        await db.execute(delete_stmt)
+        await db.commit()
+        print(f"🧹 Удалено {len(sessions_to_delete)} старых сессий пользователя {user_id}")
+        return len(sessions_to_delete)
+
+    return 0
+
+
 async def _cleanup_old_records(db: AsyncSession, limit: int = 20):
-    """Удаляет старые записи, оставляя только последние limit записей"""
+    """Удаляет старые записи, оставляя только последние limit записей (устаревшая функция)"""
 
     # Подсчитываем общее количество записей
     count_query = select(func.count(ChatHistory.id))

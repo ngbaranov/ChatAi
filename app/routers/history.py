@@ -13,6 +13,7 @@ templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/", response_class=HTMLResponse)
 async def history(request: Request, db: AsyncSession = Depends(get_db)):
+
     token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(401, "Not authenticated")
